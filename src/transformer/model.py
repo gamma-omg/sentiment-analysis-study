@@ -5,8 +5,8 @@ class AttentionHead(torch.nn.Module):
         super().__init__()
         self.query = torch.nn.Linear(embed_dim, embed_dim)
         self.key = torch.nn.Linear(embed_dim, embed_dim)
-        self.value = torch.nn.Linear(embed_dim, embed_dim)        
-        self.scale = torch.tensor(embed_dim).sqrt()
+        self.value = torch.nn.Linear(embed_dim, embed_dim)                
+        self.register_buffer("scale", torch.tensor(embed_dim).sqrt())
 
     def forward(self, x):
         # x ~ [B, T, C]
@@ -63,7 +63,7 @@ class TransformerModel(torch.nn.Module):
 
     def forward(self, x):
         e = self.embed(x)
-        p = self.pos(torch.arange(x.shape[1])).unsqueeze(0).repeat(x.shape[0], 1, 1)
+        p = self.pos(torch.arange(x.shape[1], device=x.device)).unsqueeze(0).repeat(x.shape[0], 1, 1)
         y = e + p
         y = self.encoder(y)
         y = self.avg_pool(y.permute(0, 2, 1)).squeeze(-1)
