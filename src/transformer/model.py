@@ -5,7 +5,7 @@ class AttentionHead(torch.nn.Module):
         super().__init__()
         self.query = torch.nn.Linear(embed_dim, embed_dim)
         self.key = torch.nn.Linear(embed_dim, embed_dim)
-        self.value = torch.nn.Linear(embed_dim, embed_dim)                
+        self.value = torch.nn.Linear(embed_dim, embed_dim)
         self.register_buffer("scale", torch.tensor(embed_dim).sqrt())
 
     def forward(self, x):
@@ -39,7 +39,7 @@ class EncoderBlock(torch.nn.Module):
         self.dropout = torch.nn.Dropout(dropout)
         self.ff = torch.nn.Sequential(
             torch.nn.Linear(embed_dim, embed_dim),
-            torch.nn.ReLU(),
+            torch.nn.GELU(),
             torch.nn.Linear(embed_dim, embed_dim)
         )        
 
@@ -68,4 +68,4 @@ class TransformerModel(torch.nn.Module):
         y = self.encoder(y)
         y = self.avg_pool(y.permute(0, 2, 1)).squeeze(-1)
         y = self.classifier(y)
-        return y
+        return torch.nn.functional.gelu(y)
