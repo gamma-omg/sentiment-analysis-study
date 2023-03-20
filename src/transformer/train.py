@@ -65,7 +65,7 @@ def load_datasets(data_file, tokenizer, vocab, val_size=0.1, test_size=0.1):
         for row in tqdm(reader, desc="Loading data  ", total=rows_count):
             x.append([vocab.get_index(t) for t in tokenizer.tokenize(row[0])])
             y.append(int(row[1]))
-            
+
     val_idx = int(len(x) * val_size)
     test_idx = int(len(x) * val_size + test_size)
     
@@ -79,7 +79,7 @@ def load_datasets(data_file, tokenizer, vocab, val_size=0.1, test_size=0.1):
     return Dataset(train_x, train_y), Dataset(val_x, val_y), Dataset(test_x, test_y)
 
 
-def train(model, dataloader, criterion, optimizer):
+def train(model, dataloader, criterion, optimizer, grad_norm_clip=None):
     epoch_loss = 0
     correct = 0
 
@@ -92,6 +92,10 @@ def train(model, dataloader, criterion, optimizer):
         y_out = y_out.squeeze()
         loss = criterion(y_out, y)
         loss.backward()
+
+        if grad_norm_clip is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_norm_clip)
+
         optimizer.step()
         
         epoch_loss += loss.item()
@@ -119,6 +123,11 @@ def validate(model, dataloader, criterion, device):
     return epoch_loss / len(dataloader), correct / len(dataloader.dataset)
 
 
+def initialize_weights(m):
+    if hasattr(m, 'weight') and m.weight.dim() > 1:
+        torch.nn.init.kaiming_uniform(m.weight.data)
+
+
 def run_training(args):
     logging.info("Training started")
     logging.info(f"* Epochs: {args.epochs}")
@@ -139,8 +148,9 @@ def run_training(args):
     train_loader = Dataloader(train_set, vocab=vocab, batch_size=args.batch_size, shuffle=True, device=device)
     val_loader = Dataloader(val_set, vocab=vocab, batch_size=args.batch_size, shuffle=False, device=device)
     
-    model = TransformerModel(vocab_size=len(vocab), max_len=3000, embed_dim=100, num_layers=8, num_heads=4, dropout=0.1)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    model = TransformerModel(vocab_size=len(vocab), max_len=200, embed_dim=128, hidden_dim=128*4, num_layers=4, num_heads=4, unk_index=vocab.get_unk_index(), pad_index=vocab.get_pad_index(), dropout=0.1)
+    model.apply(initialize_weights)
+    optimizer = torch.optim.Adam((p for p in model.parameters() if p.requires_grad), lr=args.lr)
     criterion = torch.nn.BCEWithLogitsLoss()
     
     model.to(device)
@@ -151,7 +161,7 @@ def run_training(args):
     for epoch in range(args.epochs):
         logging.info(f"Epoch {epoch + 1}/{args.epochs}")
 
-        train_loss, train_acc = train(model, train_loader, criterion, optimizer)
+        train_loss, train_acc = train(model, train_loader, criterion, optimizer, args.grad_norm_clip)
         val_loss, val_acc = validate(model, val_loader, criterion, device)
         logging.info(f"  Train loss: {train_loss:.4f}")
         logging.info(f"  Train acc : {train_acc*100:.2f}%")
@@ -169,7 +179,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--lr", type=float, default=0.0001)
+    parser.add_argument("--grad_norm_clip", type=float, default=0.1)
     parser.add_argument("--data", type=str, default="data.csv")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--model", type=str, default="model.pt")
